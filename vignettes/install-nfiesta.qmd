@@ -1,0 +1,646 @@
+---
+title: "install-nfiesta"
+format: html
+editor: 
+  markdown: 
+    wrap: 72
+---
+
+# Part 1 — Mirror the core GitLab repos into your personal GitHub
+
+The core repos are:
+
+-   nfiesta_pg — main estimation engine.
+    [\[LINK\]](https://gitlab.com/nfiesta/nfiesta_pg?utm_source=chatgpt.com)
+
+-   nfiesta_htc — Horvitz–Thompson continuous-population extension.
+    [\[LINK\]](https://gitlab.com/nfiesta/nfiesta_htc?utm_source=chatgpt.com)
+
+-   nfiesta_sdesign — sampling-design extension.
+    [\[LINK\]](https://gitlab.com/nfiesta/nfiesta_sdesign?utm_source=chatgpt.com)
+
+GitLab wikis are separate Git repositories, and GitLab documents that
+you can clone them from the Wiki area using Clone repository.
+
+## Step 1. Create empty repos on GitHub
+
+Create these empty GitHub repositories in your account:
+
+nfiesta_pg
+
+-   nfiesta_htc
+
+-   nfiesta_sdesign
+
+Do not initialize them with a README.
+
+## Step 2. Mirror nfiesta_pg
+
+In Terminal:
+
+``` bash
+mkdir -p ~/code/nfiesta 
+cd ~/code/nfiesta
+
+git clone https://gitlab.com/nfiesta/nfiesta_pg.git 
+cd nfiesta_pg
+
+git remote rename origin upstream 
+git remote add origin https://github.com/gaelso/nfiesta_pg.git
+
+git push -u origin --all 
+git push -u origin --tags
+```
+
+This gives you:
+
+-   upstream = original GitLab repo
+
+-   origin = your GitHub mirror
+
+## Step 3. Mirror nfiesta_htc
+
+``` bash
+cd ~/code/nfiesta 
+git clone https://gitlab.com/nfiesta/nfiesta_htc.git 
+cd nfiesta_htc
+
+git remote rename origin upstream 
+git remote add origin https://github.com/YOUR_GITHUB_USERNAME/nfiesta_htc.git
+
+git push -u origin --all 
+git push -u origin --tags
+```
+
+## Step 4. Mirror nfiesta_sdesign
+
+``` bash
+cd ~/code/nfiesta 
+git clone https://gitlab.com/nfiesta/nfiesta_sdesign.git 
+cd nfiesta_sdesign
+
+git remote rename origin upstream 
+git remote add origin https://github.com/YOUR_GITHUB_USERNAME/nfiesta_sdesign.git
+
+git push -u origin --all 
+git push -u origin --tags
+```
+
+## Step 5. Also mirror the wiki for nfiesta_pg
+
+This matters because the README points to the wiki for installation and
+the minimal example. GitLab documents that project wikis are separate
+repos.
+
+``` bash
+cd ~/code/nfiesta 
+git clone https://gitlab.com/nfiesta/nfiesta_pg.wiki.git 
+cd nfiesta_pg.wiki
+```
+
+Now create a GitHub repo named something like nfiesta_pg_wiki, then:
+
+``` bash
+git remote rename origin upstream 
+git remote add origin https://github.com/YOUR_GITHUB_USERNAME/nfiesta_pg_wiki.git
+
+git push -u origin --all
+```
+
+## Step 6. Verify remotes
+
+For each repo:
+
+``` bash
+
+git remote -v
+```
+
+You want to see both origin and upstream.
+
+## Step 7. Update your mirrors later
+
+When the GitLab upstream changes:
+
+``` bash
+git fetch upstream 
+git checkout main
+git merge upstream/main 
+git push origin main
+```
+
+If the default branch is master instead of main, use master.
+
+# Part 2 - Install nFiesta in a docker container
+
+NOTE for macOS:
+
+-   Postgres installation via homebrew doesn't ship with python support.
+
+-   Postgres installation via Postgres.app doesn't allow modification of
+    the DB (ex. `make install` ) as modification to the Application
+    folder aare forbiden even with sudo).
+
+-   The safest path is to run everything inside a docker container.
+
+> PostgreSQL extensions need their control files, SQL scripts, and
+> sometimes shared libraries installed into the server’s extension
+> directories before CREATE EXTENSION will work. PostgreSQL’s extension
+> docs and PGXS build docs describe exactly that model, which is why a
+> writable Linux container is a good fit here.
+
+## Final folder structure
+
+Use one project root:
+
+```         
+~/code/nfiesta/
+├── docker/
+│   ├── Dockerfile
+│   └── docker-compose.yml
+├── nfiesta_pg/
+├── nfiesta_htc/
+└── nfiesta_sdesign/
+```
+
+This keeps:
+
+-   `nfiesta_*` repos as upstream mirrors,
+
+-   `docker/` as your local infrastructure,
+
+-   one clean mount point into the container.
+
+That structure is just a practical project convention, but it lines up
+well with Docker’s normal “build context” model and with PostgreSQL
+extension development using PGXS.
+
+## Step 1 — Create the project folders
+
+``` bash
+mkdir -p ~/code/nfiesta/docker
+mkdir -p ~/code/nfiesta
+cd ~/code/nfiesta
+```
+
+If your repos already exist somewhere else, move them into
+`~/code/nfiesta/` so you end up with:
+
+``` bash
+ls ~/code/nfiesta
+# docker  nfiesta_pg  nfiesta_htc  nfiesta_sdesign
+```
+
+## Step 2 — Put the Docker files in `~/code/nfiesta/docker`
+
+Go there:
+
+``` bash
+cd ~/code/nfiesta/docker
+```
+
+Create the files:
+
+``` bash
+touch Dockerfile docker-compose.yml
+```
+
+## Step 3 — Create the Dockerfile
+
+Open `~/code/nfiesta/docker/Dockerfile` and paste this:
+
+``` dockerfile
+FROM postgres:16
+
+RUN apt-get update && apt-get install -y \
+    postgresql-server-dev-16 \
+    postgresql-plpython3-16 \
+    postgresql-16-postgis-3 \
+    build-essential \
+    git \
+    python3 \
+    python3-pip \
+    python3-numpy \
+    && rm -rf /var/lib/apt/lists/*
+```
+
+Why this image and these packages:
+
+-   `postgres:16` is the official PostgreSQL Docker image.
+
+-   `postgresql-server-dev-16` is what PGXS-based extension builds
+    normally need.
+
+-   `postgresql-plpython3-16` provides `plpython3u`, which you need for
+    nFIESTA. PostgreSQL documents `plpython3u` as the extension name to
+    load.
+
+-   `postgresql-16-postgis-3` provides PostGIS for PostgreSQL 16.
+    PostGIS is an extension to PostgreSQL and requires PostgreSQL
+    server-side installation support.
+
+## Step 4 — Create `docker-compose.yml`
+
+Open `~/code/nfiesta/docker/docker-compose.yml` and paste this:
+
+``` yaml
+services:
+  db:
+    build: .
+    container_name: nfiesta-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - ../:/src
+      - nfiesta_pgdata:/var/lib/postgresql/data
+    working_dir: /src
+
+volumes:
+  nfiesta_pgdata:
+```
+
+Why port `5433`:
+
+-   it avoids conflicts with Homebrew PostgreSQL or Postgres.app if
+    either is still installed or accidentally running. The official
+    Postgres image listens on `5432` inside the container; you can map
+    that to any free host port.
+
+Why `../:/src`:
+
+-   from inside `~/code/nfiesta/docker`, `../` is your whole
+    `~/code/nfiesta` project root,
+
+-   so inside the container you will see:
+
+    -   `/src/nfiesta_pg`
+
+    -   `/src/nfiesta_htc`
+
+    -   `/src/nfiesta_sdesign`
+
+    -   `/src/docker`
+
+## Step 5 — Build and start the container
+
+From `~/code/nfiesta/docker`:
+
+``` bash
+docker compose up -d --build
+```
+
+This will:
+
+-   build the custom image,
+
+-   create the `nfiesta-db` container,
+
+-   start PostgreSQL,
+
+-   persist your database in the named volume `nfiesta_pgdata`.
+
+Check that it is running:
+
+``` bash
+docker compose ps
+```
+
+## Step 6 — Enter the container
+
+``` bash
+docker exec -it nfiesta-db bash
+```
+
+Inside the container, verify the repos are mounted:
+
+``` bash
+ls /src
+```
+
+You should see:
+
+``` text
+docker
+nfiesta_pg
+nfiesta_htc
+nfiesta_sdesign
+```
+
+## Step 7 — Verify PostgreSQL, PostGIS, and PL/Python
+
+Still inside the container:
+
+``` bash
+psql -U postgres -d postgres
+```
+
+Then run:
+
+``` sql
+CREATE EXTENSION postgis;
+CREATE EXTENSION plpython3u;
+```
+
+PostgreSQL’s docs say `CREATE EXTENSION` loads the installed extension
+into the current database, and that the extension must already be
+installed on the system.
+
+Optional checks:
+
+``` sql
+SELECT PostGIS_Full_Version();
+SELECT name FROM pg_available_extensions WHERE name IN ('postgis', 'plpython3u');
+```
+
+PostGIS recommends checking installed versions with SQL functions like
+`postgis_full_version()`.
+
+Exit `psql` with:
+
+``` sql
+\q
+```
+
+## Step 8 — Build and install `nfiesta_htc`
+
+Inside the container:
+
+``` bash
+cd /src/nfiesta_htc
+make
+make install
+```
+
+Why this should work here:
+
+-   PGXS is designed for building PostgreSQL extensions against an
+    installed server,
+
+-   and in the container the PostgreSQL extension directories are
+    writable.
+
+If `make` fails, run:
+
+```         
+pg_config --version
+pg_config --sharedir
+pg_config --pkglibdir
+```
+
+That tells you exactly which PostgreSQL installation the build is
+targeting. PGXS relies on `pg_config` for that build/install path
+information.
+
+## Step 9 — Build and install `nfiesta_sdesign`
+
+```         
+cd /src/nfiesta_sdesign
+make
+make install
+```
+
+NOTE: If `make` triggers an error, it is because it runs a test:
+
+`make installcheck REGRESS_OPTS="--dbname=contrib_regression_sdesign"`
+
+which will not work without data. It can still installed, so skip `make`
+and proceed directly to `make install`.
+
+## Step 10 — Build and install `nfiesta_pg`
+
+```         
+cd /src/nfiesta_pg
+make
+make install
+```
+
+At this point, the extension control files and SQL scripts should be
+installed into the PostgreSQL 16 directories inside the container, which
+is the prerequisite for `CREATE EXTENSION`.
+
+## Step 11 — Create your working database
+
+Open `psql` again:
+
+```         
+psql -U postgres -d postgres
+```
+
+Create the database:
+
+```         
+CREATE DATABASE nfiesta_dev;
+```
+
+Connect to it:
+
+```         
+\c nfiesta_dev
+```
+
+------------------------------------------------------------------------
+
+## Step 12 — Enable the extensions in `nfiesta_dev`
+
+Run:
+
+```         
+CREATE EXTENSION postgis;
+CREATE EXTENSION plpython3u;
+CREATE EXTENSION htc;
+CREATE EXTENSION nfiesta_sdesign;
+CREATE EXTENSION nfiesta_pg;
+```
+
+If one of the nFIESTA extension names differs from the repo name,
+inspect available extensions:
+
+```         
+SELECT name FROM pg_available_extensions
+WHERE name IN ('htc', 'nfiesta_sdesign', 'nfiesta_pg');
+```
+
+`CREATE EXTENSION` only works after the extension files are installed
+and the control file is present in PostgreSQL’s extension path.
+
+------------------------------------------------------------------------
+
+## Step 13 — Test from your Mac
+
+From your Mac terminal, not inside the container:
+
+```         
+psql -h 127.0.0.1 -p 5433 -U postgres -d nfiesta_dev
+```
+
+Password:
+
+```         
+postgres
+```
+
+This works because `docker-compose.yml` mapped host port `5433` to
+container port `5432`. The official Postgres container is designed to
+accept network connections this way.
+
+------------------------------------------------------------------------
+
+## Step 14 — Connect from R
+
+In R:
+
+```         
+install.packages(c("DBI", "RPostgres"))
+
+library(DBI)
+
+con <- dbConnect(
+  RPostgres::Postgres(),
+  dbname = "nfiesta_dev",
+  host = "127.0.0.1",
+  port = 5433,
+  user = "postgres",
+  password = "postgres"
+)
+
+dbGetQuery(con, "SELECT current_database(), current_user;")
+```
+
+That gives you the architecture you wanted:
+
+-   
+
+-   PostgreSQL for storage,
+
+-   
+
+-   R for processing,
+
+-   
+
+-   nFIESTA extensions installed in a controlled server.
+
+-   
+
+The database side is just standard PostgreSQL network access, so R does
+not care that the server is in Docker. The key PostgreSQL requirement is
+simply that the server be reachable and the extensions be installed in
+that server instance.
+
+------------------------------------------------------------------------
+
+## Step 15 — Stop and restart later
+
+From `~/code/nfiesta/docker`:
+
+```         
+docker compose stop
+docker compose start
+```
+
+To rebuild after changing the Dockerfile:
+
+```         
+docker compose up -d --build
+```
+
+To remove the container but keep database data:
+
+```         
+docker compose down
+```
+
+To remove everything including the database volume:
+
+```         
+docker compose down -v
+```
+
+Named volumes persist PostgreSQL data across container restarts unless
+you explicitly remove them. That is standard Docker volume behavior for
+stateful services like PostgreSQL.
+
+------------------------------------------------------------------------
+
+## Recommended cleanup on your Mac
+
+For now:
+
+-   
+
+-   stop Homebrew PostgreSQL,
+
+-   
+
+-   stop Postgres.app,
+
+-   
+
+-   keep them installed until Docker is working,
+
+-   
+
+-   then uninstall the ones you do not want.
+
+-   
+
+That avoids port conflicts and “wrong `pg_config` / wrong `psql`”
+confusion. PostgreSQL extension builds are sensitive to which server
+installation `pg_config` points to.
+
+Use:
+
+```         
+brew services stop postgresql@16
+```
+
+And make sure Postgres.app is not running.
+
+------------------------------------------------------------------------
+
+## The one thing to check before building nFIESTA
+
+Make sure your repos are actually here:
+
+```         
+~/code/nfiesta/nfiesta_pg
+~/code/nfiesta/nfiesta_htc
+~/code/nfiesta/nfiesta_sdesign
+```
+
+If they are not, the volume mount will work, but the `cd /src/...` steps
+will fail.
+
+------------------------------------------------------------------------
+
+## If you want the shortest possible path
+
+Create these two files in `~/code/nfiesta/docker`, run:
+
+```         
+docker compose up -d --build
+docker exec -it nfiesta-db bash
+```
+
+and then inside the container:
+
+```         
+psql -U postgres -d postgres -c "CREATE EXTENSION postgis;"
+psql -U postgres -d postgres -c "CREATE EXTENSION plpython3u;"
+cd /src/nfiesta_htc && make && make install
+cd /src/nfiesta_sdesign && make && make install
+cd /src/nfiesta_pg && make && make install
+psql -U postgres -d postgres -c "CREATE DATABASE nfiesta_dev;"
+psql -U postgres -d nfiesta_dev -c "CREATE EXTENSION postgis;"
+psql -U postgres -d nfiesta_dev -c "CREATE EXTENSION plpython3u;"
+psql -U postgres -d nfiesta_dev -c "CREATE EXTENSION htc;"
+psql -U postgres -d nfiesta_dev -c "CREATE EXTENSION nfiesta_sdesign;"
+psql -U postgres -d nfiesta_dev -c "CREATE EXTENSION nfiesta_pg;"
+```
+
+If you hit an error at any step, paste the exact command and full output
+and I’ll debug that specific point.
