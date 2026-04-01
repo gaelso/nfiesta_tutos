@@ -385,7 +385,7 @@ Why this should work here:
 
 If `make` fails, run:
 
-```         
+``` bash
 pg_config --version
 pg_config --sharedir
 pg_config --pkglibdir
@@ -397,7 +397,7 @@ information.
 
 ## Step 9 — Build and install `nfiesta_sdesign`
 
-```         
+``` bash
 cd /src/nfiesta_sdesign
 make
 make install
@@ -412,7 +412,7 @@ and proceed directly to `make install`.
 
 ## Step 10 — Build and install `nfiesta_pg`
 
-```         
+``` bash
 cd /src/nfiesta_pg
 make
 make install
@@ -426,19 +426,19 @@ is the prerequisite for `CREATE EXTENSION`.
 
 Open `psql` again:
 
-```         
+``` bash
 psql -U postgres -d postgres
 ```
 
 Create the database:
 
-```         
+``` sql
 CREATE DATABASE nfiesta_dev;
 ```
 
 Connect to it:
 
-```         
+``` sql
 \c nfiesta_dev
 ```
 
@@ -448,7 +448,7 @@ Connect to it:
 
 Run:
 
-```         
+``` sql
 CREATE EXTENSION postgis;
 CREATE EXTENSION plpython3u;
 CREATE EXTENSION htc;

@@ -1,0 +1,509 @@
+---
+title: "nFIESTA Docker Setup (GitLab → GitHub → Docker)"
+format: html
+---
+
+# Goal
+
+This guide shows how to:
+
+1.  Mirror nFIESTA GitLab repos into personal GitHub
+2.  Repoint submodules to GitHub
+3.  Use the official Docker dev image
+4.  Run the official `provision.sh` workflow
+
+------------------------------------------------------------------------
+
+# 1. Create workspace
+
+```{bash}
+mkdir -p ~/code/nfiesta
+cd ~/code/nfiesta
+```
+
+------------------------------------------------------------------------
+
+# 2. Mirror GitLab repos to GitHub
+
+## 2.1 Create empty GitHub repos
+
+Create these repos manually on GitHub:
+
+-   nfiesta_pg
+-   nfiesta_htc
+-   nfiesta_sdesign
+
+Do NOT initialize them.
+
+------------------------------------------------------------------------
+
+## 2.2 Mirror nfiesta_pg
+
+```{bash}
+cd ~/code/nfiesta
+
+git clone https://gitlab.com/nfiesta/nfiesta_pg.git
+cd nfiesta_pg
+
+git remote rename origin upstream
+git remote add origin https://github.com/YOUR_GITHUB_USERNAME/nfiesta_pg.git
+
+git push -u origin --all
+git push -u origin --tags
+```
+
+------------------------------------------------------------------------
+
+## 2.3 Mirror nfiesta_htc
+
+```{bash}
+cd ~/code/nfiesta
+
+git clone https://gitlab.com/nfiesta/nfiesta_htc.git
+cd nfiesta_htc
+
+git remote rename origin upstream
+git remote add origin https://github.com/YOUR_GITHUB_USERNAME/nfiesta_htc.git
+
+git push -u origin --all
+git push -u origin --tags
+```
+
+------------------------------------------------------------------------
+
+## 2.4 Mirror nfiesta_sdesign
+
+```{bash}
+cd ~/code/nfiesta-official
+
+git clone https://gitlab.com/nfiesta/nfiesta_sdesign.git
+cd nfiesta_sdesign
+
+git remote rename origin upstream
+git remote add origin https://github.com/YOUR_GITHUB_USERNAME/nfiesta_sdesign.git
+
+git push -u origin --all
+git push -u origin --tags
+```
+
+------------------------------------------------------------------------
+
+# 3. Repoint submodules to GitHub
+
+Edit:
+
+```{bash}
+ ~/code/nfiesta/nfiesta_pg/.gitmodules
+```
+
+NOTE: show hidden files on macOS: CMD + SHIFT + .
+
+Replace contents with:
+
+```         
+[submodule "deps/nfiesta_sdesign"]
+    path = deps/nfiesta_sdesign
+    url = https://github.com/YOUR_GITHUB_USERNAME/nfiesta_sdesign.git
+
+[submodule "deps/nfiesta_htc"]
+    path = deps/nfiesta_htc
+    url = https://github.com/YOUR_GITHUB_USERNAME/nfiesta_htc.git
+```
+
+Commit changes:
+
+```{bash}
+cd ~/code/nfiesta/nfiesta_pg
+
+git add .gitmodules
+git commit -m "Point submodules to GitHub mirrors"
+git push origin HEAD
+```
+
+------------------------------------------------------------------------
+
+# 4. Re-clone with submodules
+
+```{bash}
+cd ~/code/nfiesta
+mv nfiesta_pg nfiesta_pg_backup
+
+git clone --recurse-submodules https://github.com/YOUR_GITHUB_USERNAME/nfiesta_pg.git
+cd nfiesta_pg
+
+git submodule sync
+git submodule update --init --recursive
+```
+
+------------------------------------------------------------------------
+
+# 5. Pull official Docker image
+
+```{bash}
+docker pull registry.gitlab.com/nfiesta/nfiesta_devenv:pg16
+```
+
+------------------------------------------------------------------------
+
+# 6. Run container
+
+!!! This will make a temporary container that gets deleted on exit
+
+```{bash}
+docker run --rm -it \
+  --platform linux/amd64 \
+  -v ~/code/nfiesta/nfiesta_pg:/builds/nfiesta/nfiesta_pg \
+  -w /builds/nfiesta/nfiesta_pg \
+  registry.gitlab.com/nfiesta/nfiesta_devenv:pg16 \
+  bash
+```
+
+For something persistent:
+
+-   Run a persistent nFIESTA Docker container
+
+    ```{bash}
+    docker run -it \
+      --name nfiesta-dev \
+      --platform linux/amd64 \
+      -p 5432:5432 \
+      -v ~/code/nfiesta/nfiesta_pg:/builds/nfiesta/nfiesta_pg \
+      -w /builds/nfiesta/nfiesta_pg \
+      registry.gitlab.com/nfiesta/nfiesta_devenv:pg16 \
+      bash
+    ```
+
+<!-- -->
+
+-   Useful commands for persistent container
+
+    -   Exit without deleting the container
+
+        ```{bash}
+        exit
+        ```
+
+    -   Restart and attach later
+
+        ```{bash}
+        docker start -ai nfiesta-dev
+        ```
+
+        !!! IMPORTANT
+
+        -\> May need to start postgres as well: `sudo service postgresql start`
+
+        !!!
+
+    -   Open a shell in the running container
+
+        ```{bash}
+        docker exec -it nfiesta-dev bash
+        ```
+
+    -   List all containers
+
+        ```{bash}
+        docker ps -a
+        ```
+
+    -   Stop the container
+
+        ```{bash}
+        docker stop nfiesta-dev
+        ```
+
+------------------------------------------------------------------------
+
+# 7. Inside container
+
+```{bash}
+git config --global --add safe.directory $(pwd)
+git config --global --add safe.directory $(pwd)/deps/nfiesta_htc
+git config --global --add safe.directory $(pwd)/deps/nfiesta_sdesign
+```
+
+------------------------------------------------------------------------
+
+# 8. Run provisioning
+
+```{bash}
+bash provision.sh
+```
+
+------------------------------------------------------------------------
+
+# 9. Verify PostgreSQL
+
+From inside the container run:
+
+```{bash}
+# Inside container
+psql -U vagrant -d postgres
+```
+
+If out, start the container or connect to it first:
+
+```{bash}
+# Outside container
+docker start -ai nfiesta-dev
+# or
+docker exec -it nfiesta-dev bash
+```
+
+Start the DB if needed:
+
+```{bash}
+# Inside the container
+sudo service postgresql start
+```
+
+```{sql}
+SELECT name, installed_version
+FROM pg_available_extensions
+WHERE name IN (
+  'postgis',
+  'plpython3u',
+  'htc',
+  'nfiesta_sdesign',
+  'nfiesta_pg'
+);
+```
+
+standard checks:
+
+```{sql}
+\l
+\du
+\dx
+```
+
+# Install nFIESTA extensions in a working database
+
+## Create a clean working database for nFIESTA
+
+```{sql}
+CREATE DATABASE nfiesta_lab OWNER vagrant;
+\c nfiesta_lab
+```
+
+## Create required schema
+
+```{sql}
+CREATE SCHEMA nfiesta;
+```
+
+## Install extensions
+
+```{sql}
+CREATE EXTENSION postgis;
+CREATE EXTENSION plpython3u;
+CREATE EXTENSION htc;
+CREATE EXTENSION nfiesta_sdesign;
+CREATE EXTENSION nfiesta;
+```
+
+## Verify
+
+```{sql}
+\dx
+```
+
+## Inspect schemas
+
+```{sql}
+SELECT schema_name
+FROM information_schema.schemata
+ORDER BY schema_name;
+```
+
+## Inspect non-system tables
+
+```{sql}
+SELECT table_schema, table_name
+FROM information_schema.tables
+WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+ORDER BY table_schema, table_name;
+```
+
+------------------------------------------------------------------------
+
+## Notes
+
+-   `pg_available_extensions` shows what **can be installed**
+-   `\dx` shows what is **actually installed in the current database**
+-   Extensions must be created **per database**
+-   The main extension name is `nfiesta` (not `nfiesta_pg`)
+
+# Connect to the DB from outside the container
+
+When inside the container (typically with `docker start -ai nfiesta-dev` or `docker exec -it nfiesta-dev bash` if already running), we can connect to the DB with `psql -U vagrant -d postgres` . However from a terminal outside the container we need to allow connection to the macOS IP, which is different from 127.0.0.1:
+
+Schema:
+
+```         
+R (Mac) → 127.0.0.1 → Docker → PostgreSQL
+
+                        ↓ seen as 192.168.65.1
+```
+
+We need to edit `pg_hba.conf` in postgres to allow connection from that IP.
+
+Test the connection from outside the container (start a new terminal if already in or run `exit`):
+
+```{bash}
+# Oustide container
+psql -h 127.0.0.1 -p 5432 -U vagrant -d nfiesta_lab
+```
+
+If it throws an error message like this:
+
+```{bash}
+psql: error: connection to server at "127.0.0.1", port 5432 failed: FATAL:  no pg_hba.conf entry for host "192.168.65.1", user "vagrant", database "nfiesta_lab", SSL encryption 
+connection to server at "127.0.0.1", port 5432 failed: FATAL:  no pg_hba.conf entry for host "192.168.65.1", user "vagrant", database "nfiesta_lab", no encryption
+```
+
+It means that we need to add the host IP "192.168.65.1" to the postgres `pg_hba.conf` file:
+
+```{bash}
+sudo nano /etc/postgresql/16/main/pg_hba.conf
+```
+
+And add this line under IPv4:
+
+```         
+host    all    all    192.168.65.1/32    md5
+```
+
+so that the file changes from this:
+
+```         
+# IPv4 local connections:
+host    all             all             127.0.0.1/32            scram-sha-256
+host    all             vagrant         172.0.0.0/8             scram-sha-256
+```
+
+to this:
+
+```         
+# IPv4 local connections:
+host    all             all             127.0.0.1/32            scram-sha-256
+host    all             vagrant         172.0.0.0/8             scram-sha-256
+host    all             all             192.168.65.1/32         scram-sha-256
+```
+
+Then retest the connection from outside:
+
+```{bash}
+# Oustide container
+psql -h 127.0.0.1 -p 5432 -U vagrant -d nfiesta_lab
+```
+
+# Run nFIESTA minimal working example
+
+## Get nfiesta_gui
+
+Install nfiesta_gui in windows or windows container (e.g. Parallel desktop). In Parallel desktop, installation works well, but IP of the server has to direct to Mac IP (not DB IP or docker IP):
+
+Run in macos terminal:
+
+```{bash}
+ipconfig getifaddr en0 
+
+# example result
+# > 192.168.1.63
+```
+
+Test from Windows terminal:
+
+```{bash}
+ping 192.168.1.63
+```
+
+In nfiesta_gui, use this IP as server:
+
+```         
+Server: 192.168.1.63
+Port: 5432
+Database: nfiesta_lab
+User: vagrant
+Password: ****
+```
+
+## Get example data
+
+Get the data into the DB, following these instructions: <https://gitlab.com/nfiesta/pathfinder_demo_study/-/wikis/CSV-files-quality-control>
+
+First need to install support for large file in git:
+
+```{bash}
+brew install git-lfs
+
+# Then initialize
+git lfs install
+
+# Check version
+# git lfs version
+```
+
+Clone the gitlab repo:
+
+```{bash}
+cd ~/code/nfiesta
+
+git clone https://gitlab.com/nfiesta/pathfinder_demo_study.git
+
+cd pathfinder_demo_study
+```
+
+Create a new directory with the CSV data from csv_import/countries/example_data_2_0 into csv_import/countries/Czechia:
+
+```{bash}
+cd csv_import/countries/
+
+mkdir Czechia
+
+cp example_data_2_0/*csv Czechia/
+```
+
+Check data in place
+
+```{bash}
+ls Czechia
+```
+
+Next step is to create the docker container with the data. This step takes a long time as it sets up the container with the database and import the CSV into it and run tests.
+
+NOTE: edit `docker-compose.yml`
+
+-   On ARM machine it may be necessary to and replace `platform: linux` with `platform: linux/amd64`
+
+-   If port 5432 is already used port can be edited in the same file. Te get to port 5433 for example, replace `${NFIESTA_PORT:-5432}:5432` with `${NFIESTA_PORT:-5433}:5432` or another number (on the left side only).
+
+```{bash}
+# If needed
+# cd csv_import/
+NFIESTA_COUNTRY='["CZ"]' COMPOSE_PROJECT_NAME='cz' docker compose up
+```
+
+Once installed update the following extensions: `nfiesta` and `nfiesta-sdesign`
+
+```{bash}
+# Stop/start copntainer if needed
+# docker stop pf_db_cz
+# docker start pf_db_cz
+
+# Connect to the container
+docker exec -it pf_db_cz bash
+
+# Connect to the DB
+psql -d pathfinder_ds
+```
+
+Then in SQL:
+
+```{sql}
+ALTER EXTENSION nfiesta UPDATE TO '4.2.1';
+ALTER EXTENSION nfiesta_sdesign UPDATE TO '1.1.17';
+\dx
+```
