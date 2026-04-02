@@ -507,3 +507,7 @@ ALTER EXTENSION nfiesta UPDATE TO '4.2.1';
 ALTER EXTENSION nfiesta_sdesign UPDATE TO '1.1.17';
 \dx
 ```
+
+Database Structure:
+
+![](https://gitlab.com/nfiesta/nfiesta_pg/-/wikis/myuploads/erd/nfi_esta_yEd.png)
