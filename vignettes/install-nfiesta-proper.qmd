@@ -403,6 +403,8 @@ psql -h 127.0.0.1 -p 5432 -U vagrant -d nfiesta_lab
 
 ## Get nfiesta_gui
 
+nFIESTA GUI releases are in: <https://gitlab.com/nfiesta/nfiesta_gui/-/releases>
+
 Install nfiesta_gui in windows or windows container (e.g. Parallel desktop). In Parallel desktop, installation works well, but IP of the server has to direct to Mac IP (not DB IP or docker IP):
 
 Run in macos terminal:
@@ -508,6 +510,60 @@ ALTER EXTENSION nfiesta_sdesign UPDATE TO '1.1.17';
 \dx
 ```
 
+## Modifying the data to get the spatial information into place
+
 Database Structure:
 
 ![](https://gitlab.com/nfiesta/nfiesta_pg/-/wikis/myuploads/erd/nfi_esta_yEd.png)
+
+### Create the NUTS boundaries from the INSPIRE 1 km grid
+
+Objective: create estimation cells with NUTS (EU regions and admin boundaries) from INSPIRE 1 km grid
+
+Target file: `pathfinder_demo_study/csv_import/provisioning/provision_cells_use4estimates_nuts.sql`
+
+This file reconfigure the admin for the target countries and its direct neighbours. At the time of the study, the country in the file was Finland (FI) with neighbour Norway and Sweden
+
+Task:
+
+-   Change the target country to CZ and remove neighbours:
+
+    -   change 'FI' with 'CZ' (9 occurences)
+
+    -   change 'NO', 'SE' to '' -\> removing neighbour
+
+-   Run the sql script from within csv_import in the container:
+
+```{bash}
+# If needed
+# cd pathfinder_demo_study/csv_import 
+docker exec -it pf_db_cz bash
+psql -d pathfinder_ds -f ./provisioning/provision_cells_use4estimates_nuts.sql
+```
+
+### Add stratum to the estimation cells
+
+Objective: Populate a table in NFiesta schema: t_stratum_in_estimation_cell
+
+Task: Run `stratum2estimation_cell_artifacts.py` from within csv_import in the docker container
+
+```{bash}
+# If needed
+# cd pathfinder_demo_study/csv_import 
+# docker exec -it pf_db_cz bash
+python3 ./provisioning/nfiesta/stratum2estimation_cell_artifacts.py --connectionstring='dbname=pathfinder_ds' --country=CZ --processes=60 --insert
+```
+
+Optional: Check in QGIS that the NUTS cells are for the correct lcoation
+
+In QGIS go to Open \> PostreSQL, write the connection parameter (adapt to your DB params):
+
+```         
+Name: nfiesta-CZ 
+Host: localhost 
+Port: 5452 
+Database: pathfinder_ds 
+Authentication (Basic): 
+  User Name: vagrant 
+  Password: \*\*\*\*
+```
