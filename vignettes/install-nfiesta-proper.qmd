@@ -554,7 +554,7 @@ Task: Run `stratum2estimation_cell_artifacts.py` from within csv_import in the d
 python3 ./provisioning/nfiesta/stratum2estimation_cell_artifacts.py --connectionstring='dbname=pathfinder_ds' --country=CZ --processes=60 --insert
 ```
 
-Optional: Check in QGIS that the NUTS cells are for the correct lcoation
+Optional: Check in QGIS that the NUTS cells are for the correct location
 
 In QGIS go to Open \> PostreSQL, write the connection parameter (adapt to your DB params):
 
@@ -567,3 +567,45 @@ Authentication (Basic):
   User Name: vagrant 
   Password: \*\*\*\*
 ```
+
+Then in QGIS, open DB manager (Database \> DB Manager...) add a SQL window and make layers based on SQL queries. For example to see the INSPIRE 1 km grid:
+
+```{sql}
+SELECT 
+	t1.gid, 
+	t1.geom 
+FROM nfiesta.f_a_cell AS t1
+INNER JOIN 
+   nfiesta.c_estimation_cell AS t2
+ON t1.estimation_cell = t2.id AND t2.estimation_cell_collection = 1;
+```
+
+Or to see the NUTS3 level:
+
+```{sql}
+SELECT 
+	t1.gid, 
+	t1.geom 
+FROM nfiesta.f_a_cell AS t1
+INNER JOIN 
+   nfiesta.c_estimation_cell AS t2
+ON t1.estimation_cell = t2.id AND t2.estimation_cell_collection = 6;
+```
+
+Cell collection IDs are in the table: `c_estimation_cell_collection`
+
+To load the query as a layer click `Load as new layer` in the DB Manager.
+
+### Create hierarchy of estimation cells (tbc, should have been done in python) 
+
+Still from csv_import i the docker container run:
+
+```{bash}
+psql -v countries_aff="'CZ'" -d pathfinder_ds -f provisioning/provision_cells_use4estimates_nuts_stratum_in_estimation_cell.sql
+```
+
+From there move to the GUI:
+
+Connect to the DB then we need to add the time periods:
+
+Chose a Topic and Variable (for example: forest area
